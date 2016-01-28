@@ -1,0 +1,16 @@
+build-VolumeRender-Qt_5_4_1_MinGW_4_9_1_x64/wt_config.xml
+build-VolumeRender-Qt_5_4_1_MinGW_4_9_1_x64/WebLog.log
+*.o
+build-VolumeRender-Qt_5_4_1_MinGW_4_9_1_x64/release/moc_webserver.cpp
+build-VolumeRender-Qt_5_4_1_MinGW_4_9_1_x64/Makefile.Release
+build-VolumeRender-Qt_5_4_1_MinGW_4_9_1_x64/Makefile.Debug
+build-VolumeRender-Qt_5_4_1_MinGW_4_9_1_x64/Makefile
+*.exe
+build-VolumeRender-Qt_5_4_1_MinGW_4_9_1_x64/CoreUiLog.log
+build-VolumeRender-Qt_5_4_1_MinGW_4_9_1_x64/AccesLog.log
+build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/wt_config.xml
+build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/WebLog.log
+build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/Makefile.Release
+build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/Makefile.Debug
+build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/Makefile
+build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/AccesLog.log
