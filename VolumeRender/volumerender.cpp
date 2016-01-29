@@ -67,32 +67,46 @@ void VolumeRender::_initShaders()
         vec4 sampleAs3DTexture(vec3 pos)                            \n\
         {                                                           \n\
             vec2 tex;                                               \n\
-            tex.x = pos.x;                                          \n\
-            tex.y = pos.y/uSize+floor(pos.z*uSize)/uSize;           \n\
-            return texture2D(uVolumeTextureSampler, tex);           \n\
+            tex.x = pos.x*0.9999+0.00005;                           \n\
+            tex.y = min(pos.y/uSize+floor(pos.z*uSize)/uSize,1.0);  \n\
+            tex.y = tex.y*0.9999+0.00005;                           \n\
+//            return texture2D(uVolumeTextureSampler, tex);           \n\
+                                                                    \n\
+            // grayscale to rainbow                                 \n\
+            vec4 col = texture2D(uVolumeTextureSampler, tex);       \n\
+            float inv = (1.0-col.r)*4.0;                            \n\
+            float X = floor(inv);                                   \n\
+            float Y = inv-X;                                        \n\
+            if(X==0.0)      {col.r = 1.0;       col.g = Y;          col.b = 0.0;}   \n\
+            else if(X==1.0) {col.r = 1.0 - Y;   col.g = 1.0;        col.b = 0.0;}   \n\
+            else if(X==2.0) {col.r = 0.0;       col.g = 1.0;        col.b = Y;}     \n\
+            else if(X==3.0) {col.r = 0.0;       col.g = 1.0 - Y;    col.b = 1.0;}   \n\
+            else if(X==4.0) {col.r = 0.0;       col.g = 0.0;        col.b = 1.0;}   \n\
+            return col;                                             \n\
         }                                                           \n\
                                                                     \n\
         void main(void)                                             \n\
         {                                                           \n\
-            vec4 acc, src, dst;                                     \n\
-            vec3 rayEnd = texture2D(uBackfaceTextureSampler,        \n\
-                    gl_FragCoord.xy / vec2(                         \n\
-                        uBackfaceTextureWidth,                      \n\
-                        uBackfaceTextureHeight)).rgb *              \n\
-                2.0 - 1.0;                                          \n\
-            vec3 rayStart = vTexCrd * 2.0 - 1.0;                    \n\
-            vec3 dir = rayEnd.rgb - rayStart.rgb;                   \n\
-            vec3 step = dir / 256.0;                                \n\
-            vec3 ray = rayStart;                                    \n\
-            for (int i=0; i<256; ++i)                               \n\
-            {                                                       \n\
-                acc = sampleAs3DTexture(ray * 0.5 + 0.5);           \n\
-                src = acc;                                          \n\
-                if (src.r >= dst.r) dst = src;                      \n\
-                if(dst.r >= 1.0) break;                             \n\
-                ray += step;                                        \n\
-            }                                                       \n\
-            gl_FragColor = dst;                                     \n\
+//            vec4 acc, src, dst;                                     \n\
+//            vec3 rayEnd = texture2D(uBackfaceTextureSampler,        \n\
+//                    gl_FragCoord.xy / vec2(                         \n\
+//                        uBackfaceTextureWidth,                      \n\
+//                        uBackfaceTextureHeight)).rgb *              \n\
+//                2.0 - 1.0;                                          \n\
+//            vec3 rayStart = vTexCrd * 2.0 - 1.0;                    \n\
+//            vec3 dir = rayEnd.rgb - rayStart.rgb;                   \n\
+//            vec3 step = dir / 128.0;                                \n\
+//            vec3 ray = rayStart;                                    \n\
+//            for (int i=0; i<128; ++i)                               \n\
+//            {                                                       \n\
+//                acc = sampleAs3DTexture(ray * 0.5 + 0.5);           \n\
+//                src = acc;                                          \n\
+//                if (src.r >= dst.r) dst = src;                      \n\
+//                if(dst.r >= 1.0) break;                             \n\
+//                ray += step;                                        \n\
+//            }                                                       \n\
+//            gl_FragColor = dst;                                     \n\
+            gl_FragColor = sampleAs3DTexture(vTexCrd);              \n\
         }";
 
     Shader vertexShader = createShader(VERTEX_SHADER);
