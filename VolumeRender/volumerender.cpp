@@ -7,9 +7,14 @@ VolumeRender::VolumeRender(int size, float *data, WContainerWidget *parent):
     _ptrToRVEdata(data),
     WGLWidget(parent)
 {
+#ifdef USER_SIDE_CONTROL
+    // see _initializeUserSideMouseControl()
+#else
     mouseWentDown().connect(this,&VolumeRender::_onMouseWentDown);
     mouseDragged().connect(this,&VolumeRender::_onMouseDragged);
     mouseWheel().connect(this,&VolumeRender::_onMouseWheel);
+#endif //USER_SIDE_CONTROL
+
 }
 
 void VolumeRender::_initShaders()
@@ -61,6 +66,8 @@ void VolumeRender::_initShaders()
         uniform     highp   float       uBackfaceTextureWidth;      \n\
         uniform     highp   float       uBackfaceTextureHeight;     \n\
         uniform     highp   float       uSize;                      \n\
+        uniform     highp   float       uInnerBottomCutLevel;       \n\
+        uniform     highp   float       uInnerTopCutLevel;          \n\
         varying     highp   vec4        vColor;                     \n\
         varying     highp   vec3        vTexCrd;                    \n\
                                                                     \n\
@@ -70,10 +77,11 @@ void VolumeRender::_initShaders()
             tex.x = pos.x*0.9999+0.00005;                           \n\
             tex.y = min(pos.y/uSize+floor(pos.z*uSize)/uSize,1.0);  \n\
             tex.y = tex.y*0.9999+0.00005;                           \n\
-//            return texture2D(uVolumeTextureSampler, tex);           \n\
+            return texture2D(uVolumeTextureSampler, tex);           \n\
+        }                                                           \n\
                                                                     \n\
-            // grayscale to rainbow                                 \n\
-            vec4 col = texture2D(uVolumeTextureSampler, tex);       \n\
+        vec4 grayToRainbow(vec4 col)                                \n\
+        {                                                           \n\
             float inv = (1.0-col.r)*4.0;                            \n\
             float X = floor(inv);                                   \n\
             float Y = inv-X;                                        \n\
@@ -87,26 +95,27 @@ void VolumeRender::_initShaders()
                                                                     \n\
         void main(void)                                             \n\
         {                                                           \n\
-//            vec4 acc, src, dst;                                     \n\
-//            vec3 rayEnd = texture2D(uBackfaceTextureSampler,        \n\
-//                    gl_FragCoord.xy / vec2(                         \n\
-//                        uBackfaceTextureWidth,                      \n\
-//                        uBackfaceTextureHeight)).rgb *              \n\
-//                2.0 - 1.0;                                          \n\
-//            vec3 rayStart = vTexCrd * 2.0 - 1.0;                    \n\
-//            vec3 dir = rayEnd.rgb - rayStart.rgb;                   \n\
-//            vec3 step = dir / 128.0;                                \n\
-//            vec3 ray = rayStart;                                    \n\
-//            for (int i=0; i<128; ++i)                               \n\
-//            {                                                       \n\
-//                acc = sampleAs3DTexture(ray * 0.5 + 0.5);           \n\
-//                src = acc;                                          \n\
-//                if (src.r >= dst.r) dst = src;                      \n\
-//                if(dst.r >= 1.0) break;                             \n\
-//                ray += step;                                        \n\
-//            }                                                       \n\
-//            gl_FragColor = dst;                                     \n\
-            gl_FragColor = sampleAs3DTexture(vTexCrd);              \n\
+            vec4 dst;                                               \n\
+            vec3 rayEnd = texture2D(uBackfaceTextureSampler,        \n\
+                    gl_FragCoord.xy / vec2(                         \n\
+                        uBackfaceTextureWidth,                      \n\
+                        uBackfaceTextureHeight)).rgb *              \n\
+                2.0 - 1.0;                                          \n\
+            vec3 rayStart = vTexCrd * 2.0 - 1.0;                    \n\
+            vec3 dir = rayEnd.rgb - rayStart.rgb;                   \n\
+            vec3 step = dir / 64.0;                                 \n\
+            vec3 ray = rayStart;                                    \n\
+            for (int i=0; i<64; ++i)                                \n\
+            {                                                       \n\
+                vec4 src = sampleAs3DTexture(ray * 0.5 + 0.5);      \n\
+                if(src.r < uInnerBottomCutLevel ||                 \n\
+                        src.r > uInnerTopCutLevel)src = vec4(0.0,0.0,0.0,0.0);\n\
+                if(src.r >= dst.r) dst = src;                       \n\
+                if(dst.r >= uInnerTopCutLevel) break;               \n\
+                ray += step;                                        \n\
+            }                                                       \n\
+            gl_FragColor = grayToRainbow(dst);                      \n\
+//            gl_FragColor = sampleAs3DTexture(vTexCrd);              \n\
         }";
 
     Shader vertexShader = createShader(VERTEX_SHADER);
@@ -268,9 +277,41 @@ void VolumeRender::initializeGL()
     enable(DEPTH_TEST);
     enable(CULL_FACE);
     enable(BLEND);
+    blendEquation(FUNC_ADD);
+    blendFunc(SRC_ALPHA ,ONE_MINUS_SRC_ALPHA);
 
     viewport(0, 0, (unsigned) this->width().value(), (unsigned) this->height().value());
 
+#ifdef USER_SIDE_CONTROL
+    _mModel     = createJavaScriptMatrix4();
+    _mControl   = createJavaScriptMatrix4();
+    _mWorld     = createJavaScriptMatrix4();
+    _mProj      = createJavaScriptMatrix4();
+    _mScene     = createJavaScriptMatrix4();
+
+    WMatrix4x4 _m;
+    _m.setToIdentity();
+    _m.scale(0.5, 0.5, 0.5);
+    setJavaScriptMatrix4(_mModel, _m);
+
+    _m.setToIdentity();
+    _m.lookAt(
+                0, 0, 2,    // camera default position
+                0, 0, 0,    // camera looks at
+                0, 1, 0);   // up vector
+    setJavaScriptMatrix4(_mWorld, _m);
+
+    _m.setToIdentity();
+    _m.perspective(
+                60,
+                this->width().value()/this->height().value(),
+                1e-3,
+                100);
+    setJavaScriptMatrix4(_mProj, _m);
+
+    _initializeUserSideMouseControl();
+
+#else
     _mModel.setToIdentity();
     _mModel.scale(0.5, 0.5, 0.5);
 
@@ -286,9 +327,14 @@ void VolumeRender::initializeGL()
                 this->width().value()/this->height().value(),
                 1e-3,
                 100);
+#endif //USER_SIDE_CONTROL
 }
 
+#ifdef USER_SIDE_CONTROL
+void VolumeRender::_drawBox(Program &program, JavaScriptMatrix4x4 &sceneMatrix)
+#else
 void VolumeRender::_drawBox(Program &program, WMatrix4x4 &sceneMatrix)
+#endif //USER_SIDE_CONTROL
 {
     AttribLocation _vrtPos = getAttribLocation(program, "aVrtPos");
     enableVertexAttribArray(_vrtPos);
@@ -309,10 +355,14 @@ void VolumeRender::_drawBox(Program &program, WMatrix4x4 &sceneMatrix)
 
 void VolumeRender::paintGL()
 {
+#ifdef USER_SIDE_CONTROL
+    _buildSceneMatrix();
+#else
     using namespace boost::numeric::ublas;
     _mScene.impl() = prod(_mProj.impl(), _mWorld.impl());
     _mScene.impl() = prod(_mScene.impl(), _mControl.impl());
     _mScene.impl() = prod(_mScene.impl(), _mModel.impl());
+#endif //USER_SIDE_CONTROL
 
     // Render First
 
@@ -358,6 +408,14 @@ void VolumeRender::paintGL()
     bindTexture(TEXTURE_2D, _RVEtexture);
     uniform1i(_volumeTextureSampler, 1);
 
+    UniformLocation _uniformInnerBottomCutLevel =
+            getUniformLocation(_shaderProgramSecond, "uInnerBottomCutLevel");
+    uniform1f(_uniformInnerBottomCutLevel, _innerBottomCutLevel);
+
+    UniformLocation _uniformInnerTopCutLevel =
+            getUniformLocation(_shaderProgramSecond, "uInnerTopCutLevel");
+    uniform1f(_uniformInnerTopCutLevel, _innerTopCutLevel);
+
     _drawBox(_shaderProgramSecond, _mScene);
 }
 
@@ -375,6 +433,75 @@ VolumeRender::~VolumeRender()
 {
 }
 
+#ifdef USER_SIDE_CONTROL
+void VolumeRender::_buildSceneMatrix()
+{
+    std::string _js;
+
+    _js += WT_CLASS ".glMatrix.mat4.multiply(" + _mProj.jsRef() + ",";
+    _js += _mWorld.jsRef() + ",";
+    _js += _mScene.jsRef() + ");";
+
+    _js += WT_CLASS ".glMatrix.mat4.multiply(" + _mScene.jsRef() + ",";
+    _js += _mControl.jsRef() + ",";
+    _js += _mScene.jsRef() + ");";
+
+    _js += WT_CLASS ".glMatrix.mat4.multiply(" + _mScene.jsRef() + ",";
+    _js += _mModel.jsRef() + ",";
+    _js += _mScene.jsRef() + ");";
+
+    injectJS(_js);
+    GLDEBUG;
+}
+
+std::string VolumeRender::_glObjJsRef()
+{
+    return "(function(){"
+        "var r = " + jsRef() + ";"
+        "var o = r ? jQuery.data(r,'obj') : null;"
+        "return o ? o : {ctx: null};"
+            "})()";
+}
+
+void VolumeRender::_initializeUserSideMouseControl()
+{
+    // matrices should be already binded, see initializeGL()
+
+    setJavaScriptMember("_omc","null");
+    _onMouseWentDownJSlot.setJavaScript(
+                "function(a, c){"
+                "_omc=" WT_CLASS ".pageCoordinates(c);"
+                "}");
+    _onMouseDraggedJSlot.setJavaScript(
+                "function(a, c){"
+                "var d=" WT_CLASS ".pageCoordinates(c);"
+                "var _ref=" + _glObjJsRef() + ";"
+                "var _m=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];"
+                WT_CLASS ".glMatrix.mat4.rotate(_m,(d.y-_omc.y)/180.0,[1,0,0],_m);"
+                WT_CLASS ".glMatrix.mat4.rotate(_m,(d.x-_omc.x)/180.0,[0,1,0],_m);"
+                WT_CLASS ".glMatrix.mat4.multiply(_m,"
+                "_ref." + _mControl.jsRef() + ","
+                "_ref." + _mControl.jsRef() + ");"
+                "_omc=d;"
+                "_ref.paintGL();"
+                "}");
+    _onMouseWheelJSlot.setJavaScript(
+                "function(a, c){"
+                "var _ref=" + _glObjJsRef() + ";"
+                "var _f=1+0.05*" WT_CLASS ".wheelDelta(c);"
+                "var _m=[_f,0,0,0,0,_f,0,0,0,0,_f,0,0,0,0,1];"
+                WT_CLASS ".glMatrix.mat4.multiply("
+                "_ref." + _mControl.jsRef() + ","
+                "_m,"
+                "_ref." + _mControl.jsRef() + ");"
+                "_ref.paintGL();"
+                "}");
+
+    mouseWentDown().connect(_onMouseWentDownJSlot);
+    mouseDragged().connect(_onMouseDraggedJSlot);
+    mouseWheel().connect(_onMouseWheelJSlot);
+}
+#else
 void VolumeRender::_onMouseWentDown(const WMouseEvent &event)
 {
     if(event.button() == WMouseEvent::LeftButton)
@@ -402,6 +529,14 @@ void VolumeRender::_onMouseDragged(const WMouseEvent &event)
 void VolumeRender::_onMouseWheel(const WMouseEvent &event)
 {
     /// \todo remove constant, make it soft
-    _mControl.scale(1 + event.wheelDelta()*0.05);
+//    _mControl.scale(1 + event.wheelDelta()*0.05);
+    _innerTopCutLevel += event.wheelDelta()*0.05;
+    if(_innerTopCutLevel > 1.0f) _innerTopCutLevel = 1.0f;
+    if(_innerTopCutLevel < _innerBottomCutLevel) _innerTopCutLevel = _innerBottomCutLevel;
+//    _innerBottomCutLevel += event.wheelDelta()*0.05;
+//    if(_innerBottomCutLevel < 0.0f) _innerBottomCutLevel = 0.0f;
+//    if(_innerBottomCutLevel > _innerTopCutLevel) _innerBottomCutLevel = _innerTopCutLevel;
     this->repaintGL(PAINT_GL);
 }
+
+#endif //USER_SIDE_CONTROL

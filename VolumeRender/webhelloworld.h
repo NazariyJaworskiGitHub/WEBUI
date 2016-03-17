@@ -38,18 +38,20 @@ namespace Web
             for(int i=0; i<S; ++i)
                 for(int j=0; j<S; ++j)
                     for(int k=0; k<S; ++k)
-                        _RVE[k+j*S+i*S*S] = float(k+j*S+i*S*S) / float(S*S*S);
-//                        _RVE[k+j*S+i*S*S] = 0.0 + std::rand()*(1.0-0.0)/RAND_MAX;
+//                        _RVE[k+j*S+i*S*S] = float(k+j*S+i*S*S) / float(S*S*S);
+                        _RVE[k+j*S+i*S*S] = 0.0 + std::rand()*(1.0-0.0)/RAND_MAX;
 //                        if(k<S/4)
 //                            _RVE[k+j*S+i*S*S] = 0.1;
 //                        else if(k>=S/4 && k<S*3/4)
-//                            _RVE[k+j*S+i*S*S] = 0.5;
+//                            _RVE[k+j*S+i*S*S] = 1.0;
 //                        else if(k>=S*3/4)
-//                            _RVE[k+j*S+i*S*S] = 0.9;
+//                            _RVE[k+j*S+i*S*S] = 0.5;
 
             VolumeRender *_render = new VolumeRender(S, _RVE, root());
             _render->setWidth(800);
             _render->setHeight(600);
+//            _render->setWidth(env.screenWidth());
+//            _render->setHeight(env.screenHeight());
             root()->addWidget(_render);
 
         }
