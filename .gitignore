@@ -14,3 +14,7 @@ build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/Makefile.Release
 build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/Makefile.Debug
 build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/Makefile
 build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/AccesLog.log
+*.dll
+build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/release/AccesLog.log
+*.log
+build-VolumeRender-Qt_5_1_1_MinGW_4_8_0_x32/release/wt_config.xml

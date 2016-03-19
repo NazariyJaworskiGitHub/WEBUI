@@ -21,23 +21,20 @@ void VolumeRender::_initShaders()
 {
     /// see http://www3.cs.stonybrook.edu/~igutenko/webglvolrender.html
 
+    // Draw into fragment buffer the box world-space position as RGB colors
     std::string vertexShaderBackfacesSrc = "\
         attribute   highp   vec3    aVrtPos;        \n\
-        attribute   highp   vec4    aVrtCol;        \n\
         uniform     highp   mat4    uSceneMatrix;   \n\
-        varying     highp   vec4    vColor;         \n\
         varying     highp   vec4    vPosition;      \n\
         void main(void)                             \n\
         {                                           \n\
             gl_Position =                           \n\
                 uSceneMatrix * vec4(aVrtPos, 1.0);  \n\
             vPosition = vec4(aVrtPos, 1.0);         \n\
-            vColor = aVrtCol;                       \n\
         }";
 
     std::string fragmentShaderBackfacesSrc = "\
         precision   highp   float;                              \n\
-        varying     highp   vec4    vColor;                     \n\
         varying     highp   vec4    vPosition;                  \n\
         void main(void)                                         \n\
         {                                                       \n\
@@ -47,16 +44,13 @@ void VolumeRender::_initShaders()
 
     std::string vertexShaderRaycastSrc = "\
         attribute   highp   vec3    aVrtPos;        \n\
-        attribute   highp   vec4    aVrtCol;        \n\
         uniform     highp   mat4    uSceneMatrix;   \n\
-        varying     highp   vec4    vColor;         \n\
         varying     highp   vec3    vTexCrd;        \n\
         void main(void)                             \n\
         {                                           \n\
             gl_Position =                           \n\
                 uSceneMatrix * vec4(aVrtPos, 1.0);  \n\
             vTexCrd = aVrtPos.xyz * 0.5 + 0.5;      \n\
-            vColor = aVrtCol;                       \n\
         }";
 
     std::string fragmentShaderRaycastSrc = "\
@@ -68,15 +62,13 @@ void VolumeRender::_initShaders()
         uniform     highp   float       uSize;                      \n\
         uniform     highp   float       uInnerBottomCutLevel;       \n\
         uniform     highp   float       uInnerTopCutLevel;          \n\
-        varying     highp   vec4        vColor;                     \n\
         varying     highp   vec3        vTexCrd;                    \n\
                                                                     \n\
         vec4 sampleAs3DTexture(vec3 pos)                            \n\
         {                                                           \n\
             vec2 tex;                                               \n\
-            tex.x = pos.x*0.9999+0.00005;                           \n\
-            tex.y = min(pos.y/uSize+floor(pos.z*uSize)/uSize,1.0);  \n\
-            tex.y = tex.y*0.9999+0.00005;                           \n\
+            tex.x = pos.x;                                          \n\
+            tex.y = pos.y/uSize+floor(pos.z*uSize)/uSize;           \n\
             return texture2D(uVolumeTextureSampler, tex);           \n\
         }                                                           \n\
                                                                     \n\
@@ -85,14 +77,15 @@ void VolumeRender::_initShaders()
             float inv = (1.0-col.r)*4.0;                            \n\
             float X = floor(inv);                                   \n\
             float Y = inv-X;                                        \n\
-            if(X==0.0)      {col.r = 1.0;       col.g = Y;          col.b = 0.0;}   \n\
-            else if(X==1.0) {col.r = 1.0 - Y;   col.g = 1.0;        col.b = 0.0;}   \n\
-            else if(X==2.0) {col.r = 0.0;       col.g = 1.0;        col.b = Y;}     \n\
-            else if(X==3.0) {col.r = 0.0;       col.g = 1.0 - Y;    col.b = 1.0;}   \n\
-            else if(X==4.0) {col.r = 0.0;       col.g = 0.0;        col.b = 1.0;}   \n\
+            if(X==0.0)      {col.r=1.0; col.g=Y; col.b=0.0;}        \n\
+            else if(X==1.0) {col.r=1.0-Y; col.g=1.0; col.b=0.0;}    \n\
+            else if(X==2.0) {col.r=0.0; col.g=1.0; col.b=Y;}        \n\
+            else if(X==3.0) {col.r=0.0; col.g=1.0-Y; col.b=1.0;}    \n\
+            else if(X==4.0) {col.r=0.0; col.g=0.0; col.b=1.0;}      \n\
             return col;                                             \n\
         }                                                           \n\
                                                                     \n\
+        // WTF??? The 'break' statement doesn't work!               \n\
         void main(void)                                             \n\
         {                                                           \n\
             vec4 dst;                                               \n\
@@ -103,18 +96,19 @@ void VolumeRender::_initShaders()
                 2.0 - 1.0;                                          \n\
             vec3 rayStart = vTexCrd * 2.0 - 1.0;                    \n\
             vec3 dir = rayEnd.rgb - rayStart.rgb;                   \n\
-            vec3 step = dir / 64.0;                                 \n\
-            vec3 ray = rayStart;                                    \n\
-            for (int i=0; i<64; ++i)                                \n\
+            vec3 step = dir / 128.0;                                \n\
+//            vec3 ray = rayStart;                                    \n\
+            vec3 ray = rayEnd;                                      \n\
+            for (int i=0; i<128; ++i)                               \n\
             {                                                       \n\
                 vec4 src = sampleAs3DTexture(ray * 0.5 + 0.5);      \n\
-                if(src.r < uInnerBottomCutLevel ||                 \n\
-                        src.r > uInnerTopCutLevel)src = vec4(0.0,0.0,0.0,0.0);\n\
-                if(src.r >= dst.r) dst = src;                       \n\
-                if(dst.r >= uInnerTopCutLevel) break;               \n\
-                ray += step;                                        \n\
+                if(src.r >= uInnerBottomCutLevel && src.r <= uInnerTopCutLevel)dst = src;\n\
+//                if(src.r > dst.r) dst = src;                        \n\
+//                ray += step;                                        \n\
+                ray -= step;                                        \n\
             }                                                       \n\
-            gl_FragColor = grayToRainbow(dst);                      \n\
+            gl_FragColor = dst;                                     \n\
+//            gl_FragColor = grayToRainbow(dst);                      \n\
 //            gl_FragColor = sampleAs3DTexture(vTexCrd);              \n\
         }";
 
@@ -171,29 +165,6 @@ void VolumeRender::_initBox()
                 ARRAY_BUFFER,
                 _boxVertices,
                 _boxVertices + 108,
-                STATIC_DRAW);
-
-    float _boxColors[] =
-    {
-        1-dX, 1-dY,	1-dZ,	1-dX, 1-dY, dZ,		1-dX, dY,   dZ,     //1		- left
-        dX,   dY,   1-dZ,	1-dX, 1-dY, 1-dZ,	1-dX, dY,   1-dZ,	//2		- back
-        dX,   1-dY, dZ,		1-dX, 1-dY, 1-dZ,	dX,   1-dY, 1-dZ,	//3		- bottom
-        dX,   dY,   1-dZ,	dX,   1-dY, 1-dZ,	1-dX, 1-dY, 1-dZ,	//4		- back
-        1-dX, 1-dY,	1-dZ,	1-dX, dY,   dZ,		1-dX, dY,   1-dZ,	//5		- left
-        dX,   1-dY, dZ,		1-dX, 1-dY, dZ,		1-dX, 1-dY, 1-dZ,	//6		- bottom
-        1-dX, dY,   dZ,		1-dX, 1-dY, dZ,		dX,   1-dY, dZ,     //7		- front
-        dX,   dY,   dZ,		dX,   1-dY, 1-dZ,	dX,   dY,   1-dZ,	//8		- right
-        dX,   1-dY, 1-dZ,	dX,   dY,   dZ,		dX,   1-dY, dZ,     //9		- right
-        dX,   dY,   dZ,		dX,   dY,   1-dZ,	1-dX, dY,   1-dZ,	//10	- top
-        dX,   dY,   dZ,		1-dX, dY,   1-dZ,	1-dX, dY,   dZ,     //11	- top
-        dX,   dY,   dZ,		1-dX, dY,   dZ,		dX,   1-dY, dZ		//12	- front
-    };
-    _boxColorsBuffer = createBuffer();
-    bindBuffer(ARRAY_BUFFER, _boxColorsBuffer);
-    bufferDatafv<float*>(
-                ARRAY_BUFFER,
-                _boxColors,
-                _boxColors + 108,
                 STATIC_DRAW);
 }
 
@@ -338,17 +309,12 @@ void VolumeRender::_drawBox(Program &program, WMatrix4x4 &sceneMatrix)
 {
     AttribLocation _vrtPos = getAttribLocation(program, "aVrtPos");
     enableVertexAttribArray(_vrtPos);
-    AttribLocation _vrtCol = getAttribLocation(program, "aVrtCol");
-    enableVertexAttribArray(_vrtCol);
     UniformLocation _uniformSceneMatrix =
             getUniformLocation(program, "uSceneMatrix");
     uniformMatrix4(_uniformSceneMatrix, sceneMatrix);
 
     bindBuffer(ARRAY_BUFFER, _boxVerticesBuffer);
     vertexAttribPointer(_vrtPos, 3, FLOAT, false, 0, 0);
-
-    bindBuffer(ARRAY_BUFFER, _boxColorsBuffer);
-    vertexAttribPointer(_vrtCol, 3, FLOAT, false, 0, 0);
 
     drawArrays(TRIANGLES, 0, 36);
 }
@@ -365,6 +331,7 @@ void VolumeRender::paintGL()
 #endif //USER_SIDE_CONTROL
 
     // Render First
+    // Draw into fragment buffer the box world-space position as RGB colors
 
     cullFace(FRONT);
     bindFramebuffer(FRAMEBUFFER, _framebuffer);
@@ -530,12 +497,12 @@ void VolumeRender::_onMouseWheel(const WMouseEvent &event)
 {
     /// \todo remove constant, make it soft
 //    _mControl.scale(1 + event.wheelDelta()*0.05);
-    _innerTopCutLevel += event.wheelDelta()*0.05;
-    if(_innerTopCutLevel > 1.0f) _innerTopCutLevel = 1.0f;
-    if(_innerTopCutLevel < _innerBottomCutLevel) _innerTopCutLevel = _innerBottomCutLevel;
-//    _innerBottomCutLevel += event.wheelDelta()*0.05;
-//    if(_innerBottomCutLevel < 0.0f) _innerBottomCutLevel = 0.0f;
-//    if(_innerBottomCutLevel > _innerTopCutLevel) _innerBottomCutLevel = _innerTopCutLevel;
+//    _innerTopCutLevel += event.wheelDelta()*0.05;
+//    if(_innerTopCutLevel > 1.0f) _innerTopCutLevel = 1.0f;
+//    if(_innerTopCutLevel < _innerBottomCutLevel) _innerTopCutLevel = _innerBottomCutLevel;
+    _innerBottomCutLevel += event.wheelDelta()*0.05;
+    if(_innerBottomCutLevel < 0.0f) _innerBottomCutLevel = 0.0f;
+    if(_innerBottomCutLevel > _innerTopCutLevel) _innerBottomCutLevel = _innerTopCutLevel;
     this->repaintGL(PAINT_GL);
 }
 
